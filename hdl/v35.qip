@@ -3,4 +3,5 @@ set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) n
 set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) bus_control_unit_v35.sv ]
 set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) nec_decode.sv ]
 set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) types.sv ]
+set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) pic.sv ]
 set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) v33.sv ]

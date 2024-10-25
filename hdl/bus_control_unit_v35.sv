@@ -52,11 +52,14 @@ module bus_control_unit_v35(
     // Interrupt handling
     input               intreq,
     output  reg         intack,
+    output              intack_cycle,
     output  reg  [7:0]  intvec
 );
 
 bcu_t_state_e t_state;
 bcu_cycle_type_e cycle_type;
+
+assign intack_cycle = cycle_type == INT_ACK1 | cycle_type == INT_ACK2;
 
 reg dp_busy;
 reg dp_final_cycle;

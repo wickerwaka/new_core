@@ -168,12 +168,15 @@ struct
 {
     bit [7:0] PRC;
     bit [7:0] IDB;
+    bit [7:0] INTM;
 } sfr;
 
+wire ISPR;
 wire RAMEN = sfr.PRC[6];
 
-ISCR_if EXIC0(clk, reset);
-ISCR sfr_EXIC0(EXIC0);
+ISCR_if EXIC0(clk, reset); ISCR sfr_EXIC0(EXIC0);
+ISCR_if EXIC1(clk, reset); ISCR sfr_EXIC1(EXIC1);
+ISCR_if EXIC2(clk, reset); ISCR sfr_EXIC2(EXIC2);
 
 reg halt /*verilator public*/; // TODO, do something with this
 
@@ -354,6 +357,10 @@ task write_memory(input bit [15:0] addr, input sreg_index_e seg, input width_e w
         sfr.IDB <= data[7:0];
     end else if (phys_addr[19:8] == { sfr.IDB, 4'hf }) begin
         case(phys_addr[7:0])
+        8'h40: sfr.INTM <= data[7:0];
+        8'h4c: begin EXIC0.cpu_set <= 1; EXIC0.cpu_value <= data[7:0]; end
+        8'h4d: begin EXIC1.cpu_set <= 1; EXIC1.cpu_value <= data[7:0]; end
+        8'h4e: begin EXIC2.cpu_set <= 1; EXIC2.cpu_value <= data[7:0]; end
         8'heb: sfr.PRC <= data[7:0];
         8'hff: sfr.IDB <= data[7:0];
         default: begin end
@@ -379,7 +386,12 @@ task read_memory(input bit [15:0] addr, input sreg_index_e seg, input width_e wi
         internal_din <= { 8'h0, sfr.IDB };
     end else if (phys_addr[19:8] == { sfr.IDB, 4'hf }) begin
         case(phys_addr[7:0])
+        8'h50: internal_din <= { 8'h0, sfr.INTM };
+        8'h4c: internal_din <= { 8'h0, EXIC0.value };
+        8'h4d: internal_din <= { 8'h0, EXIC1.value };
+        8'h4e: internal_din <= { 8'h0, EXIC2.value };
         8'heb: internal_din <= { 8'h0, sfr.PRC };
+        8'hfc: internal_din <= { 8'h0, ISPR };
         8'hff: internal_din <= { 8'h0, sfr.IDB };
         default: internal_din <= 16'hf00d;
         endcase
@@ -689,10 +701,6 @@ task handle_branch(input nec_decode_t dec);
             state <= IDLE;
         end
 
-        OP_FINT: begin
-            state <= IDLE; // TODO
-        end
-
         default: begin
         end
     endcase
@@ -705,6 +713,7 @@ wire bcu_intreq;
 wire bcu_intack;
 wire [7:0] bcu_intvec;
 wire block_prefetch;
+wire bcu_intack_cycle;
 
 bus_control_unit_v35 BCU(
     .clk, .ce_1, .ce_2,
@@ -723,6 +732,7 @@ bus_control_unit_v35 BCU(
     .dp_ready,
 
     .intreq(bcu_intreq), .intack(bcu_intack), .intvec(bcu_intvec),
+    .intack_cycle(bcu_intack_cycle),
 
     .implementation_fault()
 );
@@ -830,6 +840,8 @@ reg [15:0] bitfield_out;
 width_e bitfield_width;
 reg [2:0] bitfield_shift;
 
+reg fint;
+
 always_ff @(posedge clk) begin
     bit [15:0] addr;
     bit [31:0] result32;
@@ -873,6 +885,7 @@ always_ff @(posedge clk) begin
 
         sfr.IDB <= 8'hcc;
         sfr.PRC <= 8'h4e;
+        sfr.INTM <= 8'h00;
 
         state <= IDLE;
         int_processing <= 0;
@@ -887,7 +900,11 @@ always_ff @(posedge clk) begin
         set_pc <= 0;
         dp_req <= 0;
 
+        if (ce_1) fint <= 0;
+
         EXIC0.cpu_set <= 0;
+        EXIC1.cpu_set <= 0;
+        EXIC2.cpu_set <= 0;
 
         case(state)
             IDLE: if (ce_1) begin
@@ -903,7 +920,7 @@ always_ff @(posedge clk) begin
                     op_delay <= 10'd0;
                     cycles <= 10'd0;
 
-                    if (intreq & flags.IE) begin
+                    if (pic_intreq & flags.IE) begin
                         state <= INT_ACK_WAIT;
                     end else if (next_decode_valid) begin
                         decoded <= next_decode;
@@ -984,7 +1001,7 @@ always_ff @(posedge clk) begin
 
             INT_ACK_WAIT: if (ce_1) begin
                 if (bcu_intack) begin
-                    interrupt_vector <= bcu_intvec;
+                    interrupt_vector <= pic_intvec;
                     state <= INT_INITIATE;
                 end
             end // INT_ACK_WAIT
@@ -1580,6 +1597,10 @@ always_ff @(posedge clk) begin
                             end
                         end
 
+                        OP_FINT: begin
+                            fint <= 1;
+                        end
+
                         OP_ADD4S, OP_SUB4S, OP_CMP4S: begin
                             working = 1;
                             if (exec_stage == 0) begin
@@ -1738,7 +1759,7 @@ always_ff @(posedge clk) begin
                             end
                         end
                     end else if (check_interrupt) begin
-                        if (intreq & flags.IE) begin
+                        if (pic_intreq & flags.IE) begin
                             state <= INT_ACK_WAIT;
                             next_pc <= decoded.pc;
                         end
@@ -1966,4 +1987,66 @@ always_ff @(posedge clk) begin
         endcase
     end
 end
+
+
+v35_edge_trigger intp0_edge(
+    .clk(clk),
+    .ce(ce_1),
+    .reset(reset),
+    .signal(~n_intp0),
+    .dir(sfr.INTM[2]),
+    .trigger(EXIC0.ctrl_set_if)
+);
+
+v35_edge_trigger intp1_edge(
+    .clk(clk),
+    .ce(ce_1),
+    .reset(reset),
+    .signal(~n_intp1),
+    .dir(sfr.INTM[4]),
+    .trigger(EXIC1.ctrl_set_if)
+);
+
+v35_edge_trigger intp2_edge(
+    .clk(clk),
+    .ce(ce_1),
+    .reset(reset),
+    .signal(~n_intp2),
+    .dir(sfr.INTM[6]),
+    .trigger(EXIC2.ctrl_set_if)
+);
+
+wire [7:0] pic_intvec;
+wire pic_intreq;
+
+v35_pic pic(
+    .clk(clk),
+    .ce(ce_1),
+    .reset(reset),
+
+    .NMI(0),
+    .INT(0),
+
+    .EXIC0(EXIC0.value),
+    .EXIC1(EXIC1.value),
+    .EXIC2(EXIC2.value),
+
+    .ISPR(ISPR),
+
+    .IE(flags.IE),
+
+    .NMI_clear(),
+    .INT_clear(),
+    .EXIC0_clear(EXIC0.ctrl_clear_if),
+    .EXIC1_clear(EXIC1.ctrl_clear_if),
+    .EXIC2_clear(EXIC2.ctrl_clear_if),
+
+    .int_req(pic_intreq),
+    .int_vector(pic_intvec),
+    .int_ack(bcu_intack_cycle & ~n_mreq),
+
+    .fint(fint)
+);
+
+
 endmodule

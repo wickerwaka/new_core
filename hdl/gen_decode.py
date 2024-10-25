@@ -256,7 +256,6 @@ state_names = [ node_state_name(node) for node in PostOrderIter(root, lambda x: 
 enums = {
     'decode_state_e': {
         'values': [
-            'DECRYPT',
             'INITIAL',
             'TERMINAL',
             'DELAY_1',

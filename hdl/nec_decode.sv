@@ -4,6 +4,44 @@
 
 import types::*;
 
+module nec_software_guard(
+    input clk,
+    input ce,
+    
+    input secure,
+
+    input secure_wr,
+    input [7:0] secure_addr,
+    input [7:0] secure_byte,
+
+    input [7:0] crypt_byte,
+    output reg [7:0] decrypt_byte,
+
+    output decrypt_valid
+);
+
+reg [7:0] trans_table[256];
+reg [7:0] lookup_value;
+
+wire [7:0] trans_addr = secure_wr ? secure_addr : crypt_byte;
+
+assign decrypt_valid = lookup_value == trans_addr;
+
+always @(posedge clk) begin
+    if (secure_wr) begin
+        trans_table[trans_addr] <= secure_byte;
+    end
+    
+    if (secure)
+        decrypt_byte <= trans_table[trans_addr];
+    else
+        decrypt_byte <= trans_addr;
+
+    lookup_value <= trans_addr;
+end
+
+endmodule
+
 module nec_decode(
     input clk,
     input ce_1,
@@ -41,8 +79,22 @@ decode_state_e state;
 nec_decode_t d; // in flight
 assign decoded = d;
 
-reg [7:0] decrypt_table[256];
-reg [7:0] decrypted_q;
+wire [7:0] decrypted_q;
+wire decrypt_valid;
+
+
+
+nec_software_guard software_guard(
+    .clk, .ce(1),
+
+    .secure,
+    .secure_wr, .secure_addr, .secure_byte,
+
+    .crypt_byte(ipq_byte(0)),
+    .decrypt_byte(decrypted_q),
+    .decrypt_valid(decrypt_valid)
+);
+
 
 function bit [2:0] calc_imm_size(width_e width, operand_e s0, operand_e s1);
     case(s0)
@@ -118,7 +170,7 @@ task reset_decode();
     decode_valid <= 0;
     disp_read <= 3'd0;
     imm_read <= 3'd0;
-    state <= DECRYPT;
+    state <= INITIAL;
 endtask
 
 
@@ -154,22 +206,15 @@ always_ff @(posedge clk) begin
             pc <= new_pc;
             reset_decode();
             d.pc <= new_pc;
-        end else if (ce_1) begin
+        end else if (ce_1) begin          
             case(state)
-                DECRYPT: begin
-                    if (avail > 0) begin
-                        if (secure)
-                            decrypted_q <= decrypt_table[q];
-                        else
-                            decrypted_q <= q;
-                        state <= INITIAL;
+                INITIAL,
+                PREFIX_CONTINUE: begin
+                    if (avail > 0 && decrypt_valid) begin
+                        process_decode(decrypted_q);
+                        pc <= pc + 16'd1;
+                        d.end_pc <= pc + 16'd1;
                     end
-                end
-
-                INITIAL: begin
-                    process_decode(decrypted_q);
-                    pc <= pc + 16'd1;
-                    d.end_pc <= pc + 16'd1;
                 end
 
                 TERMINAL: begin
@@ -237,10 +282,4 @@ always_ff @(posedge clk) begin
     end
 end
 
-
-always @(posedge clk) begin
-    if (secure_wr) begin
-        decrypt_table[secure_addr] <= secure_byte;
-    end
-end
 endmodule

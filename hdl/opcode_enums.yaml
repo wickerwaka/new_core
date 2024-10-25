@@ -1,6 +1,5 @@
 decode_state_e:
   values:
-  - DECRYPT
   - INITIAL
   - TERMINAL
   - DELAY_1
