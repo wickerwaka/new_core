@@ -152,7 +152,7 @@ always_ff @(posedge clk) begin
             end else if (INT & IE) begin
                 irq_type <= IRQ_INT;
             end else if (IE) begin
-                if (~(ISPR & prio_mask(EXIC0[2:0]))) begin
+                if ((ISPR & prio_mask(EXIC0[2:0])) == 8'd0) begin
                     if (EXIC0[7] & ~EXIC0[6]) begin
                         irq_type <= IRQ_EXIC0;
                     end else if (EXIC1[7] & ~EXIC1[6]) begin

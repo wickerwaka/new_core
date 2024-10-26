@@ -11,6 +11,7 @@ HDL_SRC = hdl/types.sv \
 		  hdl/v33.sv \
 		  hdl/nec_decode.sv \
 		  hdl/alu.sv \
+		  hdl/pic.sv
 
 HDL_GEN = hdl/opcodes.svh hdl/enums.svh
 

@@ -171,7 +171,7 @@ struct
     bit [7:0] INTM;
 } sfr;
 
-wire ISPR;
+wire [7:0] ISPR;
 wire RAMEN = sfr.PRC[6];
 
 ISCR_if EXIC0(clk, reset); ISCR sfr_EXIC0(EXIC0);
