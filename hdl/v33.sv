@@ -1047,6 +1047,7 @@ always_ff @(posedge clk) begin
                 bit working;
                 bit exception;
                 bit check_interrupt;
+                bit block_run;
 
                 if (dp_ready & ce_1 & |exec_delay & ~turbo) begin
                     exec_delay <= exec_delay - 10'd1;
@@ -1161,10 +1162,10 @@ always_ff @(posedge clk) begin
                         end
 
                         OP_STM: begin
-                            bit do_work = 1;
+                            block_run = 1;
                             if (decoded.rep != REPEAT_NONE) begin
                                 if (reg_cw == 16'd0) begin
-                                    do_work = 0;
+                                    block_run = 0;
                                 end else begin
                                     reg_cw <= reg_cw - 16'd1;
                                     working = reg_cw == 16'd1 ? 0 : 1;
@@ -1175,7 +1176,7 @@ always_ff @(posedge clk) begin
                                 delay = 3;
                             end
 
-                            if (do_work) begin
+                            if (block_run) begin
                                 write_memory(reg_iy, DS1, decoded.width, reg_aw);
                                 if (flags.DIR)
                                     reg_iy <= reg_iy - ( decoded.width == BYTE ? 16'd1 : 16'd2 );
@@ -1230,16 +1231,16 @@ always_ff @(posedge clk) begin
 
                         OP_MOVBK: begin
                             if (exec_stage == 0) begin
-                                bit do_work = 1;
+                                block_run = 1;
                                 if (decoded.rep != REPEAT_NONE) begin
                                     if (reg_cw == 16'd0) begin
-                                        do_work = 0;
+                                        block_run = 0;
                                     end else begin
                                         reg_cw <= reg_cw - 16'd1;
                                     end
                                 end
 
-                                if (do_work) begin
+                                if (block_run) begin
                                     read_memory(reg_ix, decoded.segment, decoded.width);
                                     working = 1;
                                 end
@@ -1265,16 +1266,16 @@ always_ff @(posedge clk) begin
                         end
                         OP_CMPBK: begin
                             if (exec_stage == 0) begin
-                                bit do_work = 1;
+                                block_run = 1;
                                 if (decoded.rep != REPEAT_NONE) begin
                                     if (reg_cw == 16'd0) begin
-                                        do_work = 0;
+                                        block_run = 0;
                                     end else begin
                                         reg_cw <= reg_cw - 16'd1;
                                     end
                                 end
 
-                                if (do_work) begin
+                                if (block_run) begin
                                     read_memory(reg_ix, decoded.segment, decoded.width);
                                     working = 1;
                                 end
@@ -1315,16 +1316,16 @@ always_ff @(posedge clk) begin
 
                         OP_CMPM: begin
                             if (exec_stage == 0) begin
-                                bit do_work = 1;
+                                block_run = 1;
                                 if (decoded.rep != REPEAT_NONE) begin
                                     if (reg_cw == 16'd0) begin
-                                        do_work = 0;
+                                        block_run = 0;
                                     end else begin
                                         reg_cw <= reg_cw - 16'd1;
                                     end
                                 end
 
-                                if (do_work) begin
+                                if (block_run) begin
                                     read_memory(reg_iy, DS1, decoded.width);
                                     working = 1;
                                 end
@@ -1359,16 +1360,16 @@ always_ff @(posedge clk) begin
                         OP_INM,
                         OP_OUTM: begin
                             if (exec_stage == 0) begin
-                                bit do_work = 1;
+                                block_run = 1;
                                 if (decoded.rep != REPEAT_NONE) begin
                                     if (reg_cw == 16'd0) begin
-                                        do_work = 0;
+                                        block_run = 0;
                                     end else begin
                                         reg_cw <= reg_cw - 16'd1;
                                     end
                                 end
 
-                                if (do_work) begin
+                                if (block_run) begin
                                     if (decoded.opcode == OP_INM)
                                         read_io(reg_dw, decoded.width);
                                     else
