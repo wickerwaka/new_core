@@ -71,6 +71,9 @@ $(BUILD_DIR)/test_186: $(HDL_SRC) $(HDL_GEN) bench/test_186.cpp Makefile
 $(BUILD_DIR)/bcu: $(HDL_SRC) $(HDL_GEN) bench/bcu.cpp Makefile
 	$(VERILATOR) $(VERILATOR_ARGS) -o bcu --prefix bus_control_unit --top bus_control_unit_v35 $(HDL_SRC) bench/bcu.cpp
 
+$(BUILD_DIR)/irem: $(HDL_SRC) $(HDL_GEN) bench/irem.cpp Makefile
+	$(VERILATOR) $(VERILATOR_ARGS) -o irem --prefix v33 --top V33 $(HDL_SRC) bench/irem.cpp
+
 hdl/opcodes%svh hdl/opcode_enums%yaml: hdl/opcodes.yaml hdl/gen_decode.py
 	$(PYTHON) hdl/gen_decode.py
 
