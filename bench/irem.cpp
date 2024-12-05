@@ -6,15 +6,11 @@
 
 
 // TODO
-// rom and ram regions
-// rom loading
-
-/* 	map(0x00000, 0x7ffff).rom();
-	map(0xa0000, 0xa3fff).ram();
-	map(0xd0000, 0xdffff).ram().w(FUNC(m90_state::m90_video_w)).share("video_data");
-	map(0xe0000, 0xe03ff).ram().w(m_palette, FUNC(palette_device::write16)).share("palette");
-	map(0xffff0, 0xfffff).rom();
-*/
+// rom and ram regions - done
+// rom loading - done
+// vblank - done, rough
+// comms
+// display vram
 
 VerilatedContext *contextp;
 v33 *top;
@@ -115,10 +111,17 @@ void print_trace(const v33_V33 *cpu)
     prev_state = cpu->state;
 }
 
+uint32_t total_ticks = 0;
+
 void tick(int count = 1)
 {
     for( int i = 0; i < count; i++ )
     {
+        total_ticks++;
+
+        uint32_t frame_ticks = total_ticks % 260000;
+        top->n_intp0 = frame_ticks < 10000 ? 1 : 0;
+
         if (~top->n_mreq)
         {
             if (top->r_w && ~top->n_mstb)
@@ -202,8 +205,8 @@ int main(int argc, char **argv)
     
     top->rootp->V33->set_pc = 0;
 
-    //for( int x = 0; x < 1000; x++ )
-    while(true)
+    for( int x = 0; x < 10000000; x++ )
+    //while(true)
     {
         tick(1);
         if (top->rootp->V33->halt) break;
@@ -212,6 +215,10 @@ int main(int argc, char **argv)
     top->final();
     tfp->close();
 
+    fp = fopen("vram.bin", "wb");
+    fwrite(&memory[0xd0000], 1, 64 * 1024, fp);
+    fclose(fp);
+    
     delete top;
     delete contextp;
     return 0;
