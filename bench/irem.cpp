@@ -4,6 +4,11 @@
 #include "verilated.h"
 #include "verilated_vcd_c.h"
 
+#include "imgui.h"
+#include "imgui_impl_sdl2.h"
+#include "imgui_impl_sdlrenderer2.h"
+#include <stdio.h>
+#include <SDL.h>
 
 // TODO
 // rom and ram regions - done
@@ -119,9 +124,6 @@ void tick(int count = 1)
     {
         total_ticks++;
 
-        uint32_t frame_ticks = total_ticks % 260000;
-        top->n_intp0 = frame_ticks < 10000 ? 1 : 0;
-
         if (~top->n_mreq)
         {
             if (top->r_w && ~top->n_mstb)
@@ -144,19 +146,125 @@ void tick(int count = 1)
 
         top->eval();
         tfp->dump(contextp->time());
-        print_trace(top->rootp->V33);
+        //print_trace(top->rootp->V33);
 
         contextp->timeInc(1);
         top->clk = 1;
 
         top->eval();
         tfp->dump(contextp->time());
-        print_trace(top->rootp->V33);
+        //print_trace(top->rootp->V33);
     }
+}
+
+SDL_Window *sdl_window;
+SDL_Renderer *sdl_renderer;
+
+bool imgui_init()
+{
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_GAMECONTROLLER) != 0)
+    {
+        printf("Error: %s\n", SDL_GetError());
+        return false;
+    }
+
+    // Create window with SDL_Renderer graphics context
+    SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
+    SDL_Window* window = SDL_CreateWindow("IREM", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 720, window_flags);
+    if (window == nullptr)
+    {
+        printf("Error: SDL_CreateWindow(): %s\n", SDL_GetError());
+        return false;
+    }
+
+    SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_PRESENTVSYNC | SDL_RENDERER_ACCELERATED);
+    if (renderer == nullptr)
+    {
+        SDL_Log("Error creating SDL_Renderer!");
+        return false;
+    }
+    //SDL_RendererInfo info;
+    //SDL_GetRendererInfo(renderer, &info);
+    //SDL_Log("Current SDL_Renderer: %s", info.name);
+
+    // Setup Dear ImGui context
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO(); (void)io;
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
+
+    // Setup Dear ImGui style
+    ImGui::StyleColorsDark();
+    //ImGui::StyleColorsLight();
+
+    // Setup Platform/Renderer backends
+    ImGui_ImplSDL2_InitForSDLRenderer(window, renderer);
+    ImGui_ImplSDLRenderer2_Init(renderer);
+
+    sdl_window = window;
+    sdl_renderer = renderer;
+
+    return true;
+}
+
+void imgui_frame()
+{
+    bool done = false;
+
+    SDL_Event event;
+    while (SDL_PollEvent(&event))
+    {
+        ImGui_ImplSDL2_ProcessEvent(&event);
+        if (event.type == SDL_QUIT)
+            done = true;
+        if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE && event.window.windowID == SDL_GetWindowID(sdl_window))
+            done = true;
+    }
+
+    ImGui_ImplSDLRenderer2_NewFrame();
+    ImGui_ImplSDL2_NewFrame();
+    ImGui::NewFrame();
+
+    ImGui::Begin("Hello, world!");                          // Create a window called "Hello, world!" and append into it.
+
+    uint8_t *vram = &memory[0xd8000];
+    char line[48];
+    for( int y = 0; y < 28; y++ )
+    {
+        uint8_t *vram = memory + 0xd8000 + (y * 256);
+        for( int x = 0; x < 40; x++ )
+        {
+            if( *vram < 0x20 )
+                line[x] = ' ';
+            else
+                line[x] = *vram;
+            vram += 4;
+        }
+        line[40] = '\0';
+        ImGui::Text("%s", line);
+    }
+        
+    ImGui::End();
+
+
+    ImGui::Render();
+
+    ImGuiIO& io = ImGui::GetIO();
+    SDL_RenderSetScale(sdl_renderer, io.DisplayFramebufferScale.x, io.DisplayFramebufferScale.y);
+    SDL_SetRenderDrawColor(sdl_renderer, 0, 0, 0, 0);
+    SDL_RenderClear(sdl_renderer);
+    ImGui_ImplSDLRenderer2_RenderDrawData(ImGui::GetDrawData(), sdl_renderer);
+    SDL_RenderPresent(sdl_renderer);
 }
 
 int main(int argc, char **argv)
 {
+    if( !imgui_init() )
+    {
+        return -1;
+    }
+
     if (argc != 2)
     {
         printf( "Usage: %s BIN_FILE\n", argv[0] );
@@ -205,9 +313,27 @@ int main(int argc, char **argv)
     
     top->rootp->V33->set_pc = 0;
 
+    bool vblank = false;
+    
     for( int x = 0; x < 10000000; x++ )
     //while(true)
     {
+        uint32_t frame_ticks = total_ticks % 260000;
+        if (frame_ticks < 10000)
+        {
+            top->n_intp0 = 1;
+            if (!vblank)
+            {
+                imgui_frame();
+            }
+            vblank = true;
+        }
+        else
+        {
+            top->n_intp0 = 0;
+            vblank = false;
+        }
+
         tick(1);
         if (top->rootp->V33->halt) break;
     }
